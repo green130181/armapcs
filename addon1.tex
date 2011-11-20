@@ -1,0 +1,55 @@
+\chapter{附录1}
+
+\section{arm寄存器介绍}
+\newpage
+\begin{table}[htbp]
+\caption{常用寄存器列表}
+\centering
+\begin{tabular}{p{20pt}p{20pt}p{20pt}p{100pt}}
+    \toprule
+    原名& 别名 & 又称 & 解释\\
+    \midrule
+    r0  &  a1 &      & \\
+    r1  &  a2 &      & \\
+    r2  &  a3 &      & \\
+    r3  &  a4 &      & \\
+    r4  &  v1 &      & \\
+    r5  &  v2 &      & \\
+    r6  &  v3 &      & \\
+    r7  &  v4 &      & \\
+    r8  &  v5 &      & \\
+    r9  &  v6 &   sb & stack base\\
+    r10 &  v7 &   sl & stack limit\\
+    r11 &  v8 &   fp & frame pointer\\
+    r12 &  ip &      & intra-procedure-call scratch register\\
+    r13 &  sp &      & stack pointer\\
+    r14 &  lr &      & link pointer\\
+    r15 &  pc &      & program counter\\
+    \bottomrule
+\end{tabular}
+\end{table}
+
+\section{其他寄存器}
+
+\subsection{Predeclared program status register names}
+The following program status register names are predeclared:
+\begin{itemize}
+    \item cpsr and CPSR (current program status register)
+    \item spsr and SPSR (saved program status register).
+\end{itemize}
+
+\subsection{Predeclared floating-point register names}
+The following floating-point register names are predeclared:
+\begin{itemize}
+    \item f0-f7 and F0-F7 (FPA registers)
+    \item s0-s31 and S0-S31 (VFP single-precision registers)
+    \item d0-d15 and D0-D15 (VFP double-precision registers).
+\end{itemize}
+
+\subsection{Predeclared coprocessor names}
+The following coprocessor names and coprocessor register names are predeclared:
+\begin{itemize}
+    \item p0-p15 (coprocessors 0-15)
+    \item c0-c15 (coprocessor registers 0-15).
+\end{itemize}
+
