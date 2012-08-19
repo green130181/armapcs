@@ -53,3 +53,176 @@ The following coprocessor names and coprocessor register names are predeclared:
     \item c0-c15 (coprocessor registers 0-15).
 \end{itemize}
 
+\section{example}
+\subsection{backtrace for gcc 3.4.3}
+\begin{code}
+struct layout
+{
+    struct layout *next;        /* ! This is the FP pointing to the previous frame           */
+    void *sp;                   /* ! This is the SP pointing to the top of previous frame    */
+    void *return_address;       /* ! This is the RA pointing to the location to return       */
+    void *pc;                   /* ! This is the PC pointing to the caller function          */
+};
+
+
+# define BOUNDED_N(PTR, N) (PTR)
+#define BOUNDED_1(PTR) BOUNDED_N (PTR, 1)
+/*  Get some notion of the current stack.  Need not be exactly the top
+ *     of the stack, just something somewhere in the current frame.  */
+#ifndef CURRENT_STACK_FRAME
+# define CURRENT_STACK_FRAME  ({ char __csf; &__csf; })
+#endif
+
+/*  By default we assume that the stack grows downward.  */
+#ifndef INNER_THAN
+# define INNER_THAN <
+#endif
+
+/*  By default assume the `next' pointer in struct layout points to the
+ *     next struct layout.  */
+#ifndef ADVANCE_STACK_FRAME
+# define ADVANCE_STACK_FRAME(next) BOUNDED_1 ((struct layout *) ((int)next - 12))
+#endif
+
+/*  By default, the frame pointer is just what we get from gcc.  */
+#ifndef FIRST_FRAME_POINTER
+# define FIRST_FRAME_POINTER  (__builtin_frame_address (0) - 12)
+#endif
+
+/*
+ * 减12的目的是为了跳过pc lr sp去取上一个栈帧的fp存储的地址
+ */
+extern void * __libc_stack_end;
+    int
+\end{code}
+\begin{code}
+backtrace (array, size)
+    void **array;
+    int size;
+{
+    struct layout *current = NULL;
+    /* void *top_frame;*/
+    void *top_frame = NULL;
+    void *top_stack = NULL;
+    int cnt = 0;
+
+    top_frame = FIRST_FRAME_POINTER;
+    top_stack = CURRENT_STACK_FRAME;
+
+    /*  We skip the call to this function, it makes no sense to record it.  */
+    current = BOUNDED_1 ((struct layout *) top_frame);
+    while (cnt < size)
+    {
+        if ((void *) current INNER_THAN top_stack
+                || !((void *) current INNER_THAN __libc_stack_end))
+            /*  This means the address is out of range.  Note that for the
+             *  toplevel we see a frame pointer with value NULL which clearly is
+             *  out of range.  */
+            break;
+
+        array[cnt++] = current->return_address;
+
+        current = ADVANCE_STACK_FRAME (current->next);
+    }
+
+    return cnt;
+}
+\end{code}
+
+\subsection{backtrace for gcc 4.4.1}
+\begin{code}
+struct layout
+{
+    void *fp;
+    void *lr;
+};
+
+
+# define BOUNDED_N(PTR, N) (PTR)
+#define BOUNDED_1(PTR) BOUNDED_N (PTR, 1)
+/* Get some notion of the current stack.  Need not be exactly the top
+   of the stack, just something somewhere in the current frame.  */
+#ifndef CURRENT_STACK_FRAME
+# define CURRENT_STACK_FRAME  ({ char __csf; &__csf; })
+#endif
+
+/* By default we assume that the stack grows downward.  */
+#ifndef INNER_THAN
+# define INNER_THAN <
+#endif
+
+/* By default assume the `next' pointer in struct layout points to the
+   next struct layout.  */
+#ifndef ADVANCE_STACK_FRAME
+# define ADVANCE_STACK_FRAME(next) BOUNDED_1 ((struct layout *) (((int)next) - 4))
+#endif
+
+/* By default, the frame pointer is just what we get from gcc.  */
+#ifndef FIRST_FRAME_POINTER
+# define FIRST_FRAME_POINTER  (__builtin_frame_address (0) - 4)
+#endif
+
+extern void * __libc_stack_end;
+int backtrace (void **array, int size)
+{
+    struct layout *current;
+    void *top_frame;
+    void *top_stack;
+    int cnt = 0;
+
+    top_frame = FIRST_FRAME_POINTER;
+    top_stack = CURRENT_STACK_FRAME;
+\end{code}
+
+\begin{code}
+    /* We skip the call to this function, it makes no sense to record it.  */
+    current = BOUNDED_1 ((struct layout *) top_frame);
+    while (cnt < size)
+    {
+        if ((void *) current->fp INNER_THAN top_stack
+                || !((void *) current->fp INNER_THAN __libc_stack_end))
+        {
+            /* This means the address is out of range.  Note that for the
+               toplevel we see a frame pointer with value NULL which clearly is
+               out of range.  */
+            break;
+        }
+
+        array[cnt] = current->lr;
+        cnt++;
+
+        current = ADVANCE_STACK_FRAME (current->fp);
+    }
+    /*
+     * In leaf function
+     * gcc not push lr when call it
+     */
+    printf(" ");
+    return cnt;
+}
+\end{code}
+
+\subsection{test case for backtrace}
+\begin{code}
+int f2(int a,int b)
+{
+    int j, nptrs;
+    void *buffer[100];
+    nptrs = backtrace(buffer, 100);
+    printf("file:%s, line:%d, nptrs:%d\n", __FILE__, __LINE__, nptrs);
+    for (j = 0; j < nptrs; j++)
+        printf("%p\n", buffer[j]);
+    return v;
+}
+
+int f1(int a,int b)
+{
+    f2(a,b);
+    return 0;
+}
+int main(int argc, char *argv[])
+{
+    f1(2,3);
+    return 0;
+}
+\end{code}
