@@ -226,3 +226,188 @@ int main(int argc, char *argv[])
     return 0;
 }
 \end{code}
+
+\subsection{backtrace tsk\_struct for gcc 4.4.1 in kernel}
+主要区别在于这个在内核态已经可以看到用户态的任务栈，
+找到当前的sp fp 倒出线程栈
+\begin{code}
+/*
+ * Something tried to access memory that isn't in our memory map..
+ * User mode accesses just cause a SIGSEGV
+ */
+static void
+__do_user_fault(struct task_struct *tsk, unsigned long addr,
+		unsigned int fsr, unsigned int sig, int code,
+		struct pt_regs *regs)
+{
+	struct siginfo si;
+
+#ifdef CONFIG_DEBUG_USER
+	if (user_debug & UDBG_SEGV) {
+		printk(KERN_DEBUG "%s: unhandled page fault (%d) at 0x%08lx, code 0x%03x\n",
+		       tsk->comm, sig, addr, fsr);
+		show_pte(tsk->mm, addr);
+		show_regs(regs);
+	}
+#endif
+    /*
+     *  添加的代码
+     */
+    my_show_stack(current, (unsigned long *)regs->ARM_sp, regs, addr, fsr);
+
+	tsk->thread.address = addr;
+	tsk->thread.error_code = fsr;
+	tsk->thread.trap_no = 14;
+	si.si_signo = sig;
+	si.si_errno = 0;
+	si.si_code = code;
+	si.si_addr = (void __user *)addr;
+	force_sig_info(sig, &si, tsk);
+}
+\end{code}
+
+
+\begin{code}
+void my_show_stack(struct task_struct *tsk, unsigned long *sp,struct pt_regs *regs, unsigned long addr, unsigned int fsr)
+{
+    int i;
+    int stack_len = 0;
+    int upload_times = 0, remain_bytes = 0;
+    unsigned long sp_addr = 0;
+    struct vm_area_struct *vma = NULL;
+    struct u_stack_packet info;
+
+    if ( NULL == tsk || NULL == sp || NULL == regs)
+    {
+        return;
+    }
+    
+    print_reg(tsk, regs, addr, fsr);
+}
+\end{code}
+
+\begin{code}
+struct layout
+{
+    void *fp;
+    void *lr;
+};
+
+
+# define BOUNDED_N(PTR, N) (PTR)
+#define BOUNDED_1(PTR) BOUNDED_N (PTR, 1)
+/* Get some notion of the current stack.  Need not be exactly the top
+   of the stack, just something somewhere in the current frame.  */
+#ifndef CURRENT_STACK_FRAME
+# define CURRENT_STACK_FRAME  (regs->ARM_sp)
+#endif
+
+/* By default we assume that the stack grows downward.  */
+#ifndef INNER_THAN
+# define INNER_THAN <
+#endif
+
+/* By default assume the `next' pointer in struct layout points to the
+   next struct layout.  */
+#ifndef ADVANCE_STACK_FRAME
+# define ADVANCE_STACK_FRAME(next) BOUNDED_1 ((struct layout *) (((int)next) - 4))
+#endif
+
+/* By default, the frame pointer is just what we get from gcc.  */
+#ifndef FIRST_FRAME_POINTER
+# define FIRST_FRAME_POINTER  (regs->ARM_fp - 4)
+#endif
+
+void print_reg(struct task_struct *tsk, struct pt_regs *regs, 
+    unsigned long addr, unsigned int fsr)
+{
+    int i = 0, j = 0;
+    int reg_num = 0;
+    printk("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+    printk("++  %s is dead (PID: %d)\n", tsk->comm, tsk->pid);
+    printk("+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+
+\end{code}
+\begin{code}
+    printk("\n");
+    printk("SP = 0x%08x  FP = 0x%08x  IP = 0x%08x  LR = 0x%08x  PC = 0x%08x\n", 
+        (unsigned int)regs->ARM_sp, (unsigned int)regs->ARM_fp, 
+        (unsigned int)regs->ARM_ip, (unsigned int)regs->ARM_lr, 
+        (unsigned int)regs->ARM_pc);
+
+    printk("CPSR = 0x%08x\n", (unsigned int)regs->ARM_cpsr);
+    if (fsr & (1 << 11))    /* write? */
+        printk("access: [Write], addr = 0x%08x \n", (unsigned int)addr);
+    else
+        printk("access: [Read], addr = 0x%08x \n", (unsigned int)addr);
+
+    printk("\n");
+    
+    for (i = 0; i < 6; i++)
+    {
+        for (j = 0; j < 3; j++)
+        {
+            reg_num = i * 3 + j;
+            printk("r%d = 0x%08x  ", reg_num, (unsigned int)regs->uregs[reg_num]);
+        }
+        printk("\n");
+    }
+    printk("\n");
+    printk("start backtrace task +++++++++++++++++++++++++++++++++++\n");
+    struct vm_area_struct *vma = NULL;
+    vma = find_vma(tsk->mm, regs->ARM_sp);
+    if (NULL == vma)
+        return;
+
+\end{code}
+\begin{code}
+    printk("file:%s, line:%d, ARM_sp:%p, vma->vm_start:%p, vma->vm_end:%p\n", 
+            __FILE__, __LINE__, regs->ARM_sp, vma->vm_start, vma->vm_end);
+    if ((regs->ARM_sp > vma->vm_start) && (regs->ARM_sp < vma->vm_end))
+    {
+        struct layout *currentstruct;
+        void *top_frame;
+        void *top_stack;
+
+        top_frame = FIRST_FRAME_POINTER;
+        top_stack = CURRENT_STACK_FRAME;
+
+        /* We skip the call to this function, it makes no sense to record it.  */
+        currentstruct = BOUNDED_1 ((struct layout *) top_frame);
+        while (1)
+        {
+            if ((void *) currentstruct->fp INNER_THAN top_stack
+                    || !((void *) currentstruct->fp INNER_THAN vma->vm_end))
+            {
+                /* This means the address is out of range.  Note that for the
+                   toplevel we see a frame pointer with value NULL which clearly is
+                   out of range.  */
+                printk("file:%s, line:%d, currentstruct->fp:%p, top_stack:%p, \
+                        vma->vm_end:%p\n", 
+                        __FILE__, __LINE__, currentstruct->fp, 
+                        top_stack, vma->vm_end);
+                break;
+            }
+            printk("currentstruct->lr:%p\n", currentstruct->lr);
+            currentstruct = ADVANCE_STACK_FRAME (currentstruct->fp);
+        }
+    }
+    printk("end   backtrace task ++++++++++++++++++++\n");
+    printk("\n\n");
+
+    printk("\n");
+    printk("+++++++++++++++++++++++++++++\n");
+    printk("\n\n");
+}
+\end{code}
+
+
+\subsection{backtrace 调试方法}
+\begin{itemize}
+    \item 要读懂该体系结构的汇编
+    \item 先编译个带函数调用的小程序，objdump反汇编，\
+          然后直接查看汇编中的压栈过程，反向倒回来即可
+    \item 编写过程中可以借助gdb 的examine命令(简写是x)\
+          查看内存进行调试
+\end{itemize}
+
